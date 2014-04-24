@@ -6,7 +6,6 @@
 
 %使用支持汉字的CJK包
 \usepackage{url} 
-%\def\UrlBreaks{\do\A\do\B\do\C\do\D\do\E\do\F\do\G\do\H\do\I\do\J\do\K\do\L\do\M\do\N\do\O\do\P\do\Q\do\R\do\S\do\T\do\U\do\V\do\W\do\X\do\Y\do\Z\do\[\do\\\do\]\do\^\do\_\do\`\do\a\do\b\do\c\do\d\do\e\do\f\do\g\do\h\do\i\do\j\do\k\do\l\do\m\do\n\do\o\do\p\do\q\do\r\do\s\do\t\do\u\do\v\do\w\do\x\do\y\do\z\do\0\do\1\do\2\do\3\do\4\do\5\do\6\do\7\do\8\do\9\do\.\do\@\do\\\do\/\do\!\do\_\do\|\do\;\do\>\do\]\do\)\do\,\do\?\do\'\do+\do\=\do\#}
 \usepackage{listings}
 \usepackage{amsmath}
 \usepackage{graphics}
@@ -42,7 +41,6 @@
 %再插入目录
 \tableofcontents
 
-
 %C语言格式设置：
 \lstset{numbers=left,
 keywordstyle=\bf\color{blue},
@@ -61,7 +59,7 @@ escapeinside=``}
 
 %正文开始：
 \section{基树策略}
-参考：\url{http://lwn.net/Articles/175432/}
+参考：http://lwn.net/Articles/175432/
 
 简要总结如下：
 \begin{itemize}
@@ -72,18 +70,8 @@ escapeinside=``}
         \item key中间6位查找middle层的节点；
         \item key中的低6位查找叶子节点。
     \end{itemize}
-\item API接口：\url{http://lxr.free-electrons.com/source/include/linux/radix-tree.h?v=2.6.39}
+\item API接口：http://lxr.free-electrons.com/source/include/linux/radix-tree.h?v=2.6.39
 \item 注意：\textbf{\textcolor[rgb]{1.00,0.00,0.00}{没有锁的功能，所以要由调用者自行避免可能出现的竞争条件！}}
-\item slot数：Linux root用户可以配置slot数为4或者6，即：在基树中每个节点有16个或者64个slot。
-    \begin{itemize}
-        \item $height=1$时，此基树对应$64$个页
-        \item $height=2$时，此基树对应$64 \times 64$个页
-        \end{itemize}
-\item tags域：存在的目的是为了快速检索定位，即所谓的“加标签查询”。
-        \begin{itemize}
-            \item tags[0]：PG\_dirty
-            \item tags[1]：PG\_writeback
-        \end{itemize}
 \end{itemize}
 \begin{figure}[htbp]
 \centering
@@ -92,8 +80,7 @@ escapeinside=``}
 \label{fig1}
 \end{figure}
 
-\section{基树的API}
-下面开始尝试直接使用Linux内核提供的基树API进行编程验证。
+
 
 
 
