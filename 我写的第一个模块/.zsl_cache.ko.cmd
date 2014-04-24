@@ -1,0 +1,1 @@
+cmd_/home/zsl/git/for_fun/我写的第一个模块/zsl_cache.ko := ld -r -m elf_i386 -T /usr/src/linux-headers-3.8.0-35-generic/scripts/module-common.lds --build-id  -o /home/zsl/git/for_fun/我写的第一个模块/zsl_cache.ko /home/zsl/git/for_fun/我写的第一个模块/zsl_cache.o /home/zsl/git/for_fun/我写的第一个模块/zsl_cache.mod.o

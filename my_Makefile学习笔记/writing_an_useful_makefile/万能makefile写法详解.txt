@@ -1,0 +1,303 @@
+作者：胡彦 2013-5-21
+本文档可能有更新，更新版本请留意http://blog.csdn.net/huyansoft/article/details/8924624
+
+一
+目的：编写一个实用的makefile，能自动编译当前目录下所有.c/.cpp源文件，支持二者混合编译。并且当某个.c/.cpp、.h或依赖的源文件被修改后，仅重编涉及到的源文件，未涉及的不编译。
+
+二
+要达到这个目的，用到的技术有：
+1-使用wildcard函数来获得当前目录下所有.c/.cpp文件的列表。
+2-make的多目标规则。
+3-make的模式规则。
+4-用gcc -MM命令得到一个.c/.cpp文件include了哪些文件。
+5-用sed命令对gcc -MM命令的结果作修改。
+6-用include命令包含依赖描述文件.d。
+
+三 准备知识
+（一）多目标
+对makefile里下面2行，可看出多目标特征，执行make bigoutput或make littleoutput可看到结果：
+bigoutput littleoutput: defs.h pub.h
+	@echo $@ $(subst output,OUTPUT,$@) $^	# $@指这个规则里所有目标的集合，$^指这个规则里所有依赖的集合。该行是把目标（bigoutput或littleoutput）里所有子串output替换成大写的OUTPUT
+
+（二）隐含规则
+对makefile里下面4行，可看出make的隐含规则，执行foo可看到结果：
+第3、4行表示由.c得到.o，第1、2行表示由.o得到可执行文件。
+如果把第3、4行注释的话，效果一样。
+即不写.o来自.c的规则，它会自动执行gcc -c -o foo.o foo.c这条命令，由.c编译出.o(其中-c表示只编译不链接)，然后自动执行gcc -o foo foo.o链接为可执行文件。
+foo:foo.o
+	gcc -o foo foo.o; ./foo
+foo.o:foo.c					#注释该行看效果
+	gcc -c foo.c -o foo.o	#注释该行看效果
+
+（三）定义模式规则
+下面定义了一个模式规则，即如何由.c文件生成.d文件的规则。
+foobar: foo.d bar.d
+	@echo complete generate foo.d and bar.d
+%.d: %.c		#make会对当前目录下每个.c文件，依次做一次里面的命令，从而由每个.c文件生成对应.d文件。
+	@echo from $< to $@
+	g++ -MM $< > $@
+假定当前目录下有2个.c文件：foo.c和bar.c（文件内容随意）。
+验证方法有2种，都可：
+1-运行make foo.d(或make bar.d)，表示想要生成foo.d这个目标。
+根据规则%.d: %.c，这时%匹配foo，这样%.c等于foo.c，即foo.d这个目标依赖于foo.c。
+此时会自动执行该规则里的命令gcc -MM foo.c > foo.d，来生成foo.d这个目标。
+2-运行make foobar，因为foobar依赖于foo.d和bar.d这2个文件，即会一次性生成这2个文件。
+
+四
+下面详述如何自动生成依赖性，从而实现本例的makefile。
+
+（一）
+本例使用了makefile的模式规则，目的是对当前目录下每个.c文件，生成其对应的.d文件，例如由main.c生成的.d文件内容为：
+	main.o : main.c command.h
+这里指示了main.o目标依赖于哪几个源文件，我们只要把这一行的内容，通过make的include指令包含到makefile文件里，即可在其任意一个依赖文件被修改后，重新编译目标main.o。
+下面详解如何生成这个.d文件。
+
+（二）
+gcc/g++编译器有一个-MM选项，可以对某个.c/.cpp文件，分析其依赖的源文件，例如假定main.c的内容为：
+#include <stdio.h>//标准头文件(以<>方式包含的)，被-MM选项忽略，被-M选项收集
+#include "stdlib.h"//标准头文件(以""方式包含的)，被-MM选项忽略，被-M选项收集
+#include "command.h"
+int main()
+{
+	printf("##### Hello Makefile #####\n");
+	return 0;
+}
+则执行gcc -MM main.c后，屏幕输出：
+main.o: main.c command.h
+执行gcc -M main.c后，屏幕输出：
+main.o: main.c /usr/include/stdio.h /usr/include/features.h \
+/usr/include/bits/predefs.h /usr/include/sys/cdefs.h \
+/usr/include/bits/wordsize.h /usr/include/gnu/stubs.h \
+/usr/include/gnu/stubs-64.h \
+/usr/lib/gcc/x86_64-linux-gnu/4.4.3/include/stddef.h \
+/usr/include/bits/types.h /usr/include/bits/typesizes.h \
+/usr/include/libio.h /usr/include/_G_config.h /usr/include/wchar.h \
+/usr/lib/gcc/x86_64-linux-gnu/4.4.3/include/stdarg.h \
+/usr/include/bits/stdio_lim.h /usr/include/bits/sys_errlist.h \
+/usr/include/stdlib.h /usr/include/sys/types.h /usr/include/time.h \
+/usr/include/endian.h /usr/include/bits/endian.h \
+/usr/include/bits/byteswap.h /usr/include/sys/select.h \
+/usr/include/bits/select.h /usr/include/bits/sigset.h \
+/usr/include/bits/time.h /usr/include/sys/sysmacros.h \
+/usr/include/bits/pthreadtypes.h /usr/include/alloca.h command.h
+
+（三）
+可见，只要把这些行挪到makefile里，就能自动定义main.c的依赖是哪些文件了，做法是把命令的输出重定向到.d文件里：gcc -MM main.c > main.d，再把这个.d文件include到makefile里。
+如何include当前目录每个.c生成的.d文件：
+sources:=$(wildcard *.c)	#使用$(wildcard *.cpp)来获取工作目录下的所有.c文件的列表。
+dependence=$(sources:.c=.d)	#这里,dependence是所有.d文件的列表.即把串sources串里的.c换成.d。
+include $(dependence)	#include后面可以跟若干个文件名,用空格分开,支持通配符,例如include  foo.make  *.mk。这里是把所有.d文件一次性全部include进来。注意该句要放在终极目标all的规则之后，否则.d文件里的规则会被误当作终极规则了。
+
+（四）
+现在main.c command.h这几个文件，任何一个改了都会重编main.o。但是这里还有一个问题，如果修改了command.h，在command.h中加入#include "pub.h"，这时：
+1-再make，由于command.h改了，这时会重编main.o，并且会使用新加的pub.h，看起来是正常的。
+2-这时打开main.d查看，发现main.d中未加入pub.h，因为根据模式规则%.d: %.c中的定义，只有依赖的.c文件变了，才会重新生成.d，而刚才改的是command.h，不会重新生成main.d、及在main.d中加入对pub.h的依赖关系，这会导致问题。
+3-修改新加的pub.h的内容，再make，果然问题出现了，make报告up to date，没有像期望那样重编译main.o。
+现在问题在于，main.d里的某个.h文件改了，没有重新生成main.d。进一步说，main.d里给出的每个依赖文件，任何一个改了，都要重新生成这个main.d。
+所以main.d也要作为一个目标来生成，它的依赖应该是main.d里的每个依赖文件，也就是说make里要有这样的定义：
+main.d: main.c command.h
+这时我们发现，main.d与main.o的依赖是完全相同的，可以利用make的多目标规则，把main.d与main.o这两个目标的定义合并为一句：
+main.o main.d: main.c command.h
+现在，main.o: main.c command.h这一句我们已经有了，如何进一步得到main.o main.d: main.c command.h呢？
+
+（五）
+解决方法是行内字符串替换，对main.o，取出其中的子串main，加上.d后缀得到main.d，再插入到main.o后面。能实现这种替换功能的命令是sed。
+实现的时候，先用gcc -MM命令生成临时文件main.d.temp，再用sed命令从该临时文件中读出内容(用<重定向输入)。做替换后，再用>输出到最终文件main.d。
+命令可以这么写：
+	g++ -MM main.c > main.d.temp
+	sed 's,\(main\)\.o[ :]*,\1.o main.d : ,g' < main.d.temp > main.d
+其中：
+	sed 's,\(main\)\.o[ :]*,\1.o main.d : ,g'，是sed命令。
+	< main.d.temp，指示sed命令从临时文件main.d.temp读取输入，作为命令的来源字符串。
+	> main.d，把行内替换结果输出到最终文件main.d。
+
+（六）
+这条sed命令的结构是s/match/replace/g。有时为了清晰，可以把每个/写成逗号，即这里的格式s,match,replace,g。
+该命令表示把源串内的match都替换成replace，s指示match可以是正则表达式。
+g表示把每行内所有match都替换，如果去掉g，则只有每行的第1处match被替换(实际上不需要g，因为一个.d文件中，只会在开头有一个main.o:)。
+这里match是正则式\(main\)\.o[ :]*，它分成3段：
+第1段是\(main\)，在sed命令里把main用\(和\)括起来，使接下来的replace中可以用\1引用main。
+第2段是\.o，表示匹配main.o，(这里\不知何意，去掉也是可以的)。
+第3段是正则式[ :]*，表示若干个空格或冒号，(其实一个.d里只会有一个冒号，如果这里写成[ ]*:，即匹配若干个空格后跟一个冒号，也是可以的)。
+
+总体来说match用来匹配'main.o :'这样的串。
+这里的replace是\1.o main.d :，其中\1会被替换为前面第1个\(和\)括起的内容，即main，这样replace值为main.o main.d :
+这样该sed命令就实现了把main.o :替换为main.o main.d :的目的。
+
+这两行实现了把临时文件main.d.temp的内容main.o : main.c command.h改为main.o main.d : main.c command.h，并存入main.d文件的功能。
+
+（七）
+进一步修改，采用自动化变量。使得当前目录下有多个.c文件时，make会依次对每个.c文件执行这段规则，生成对应的.d：
+	gcc -MM  $< > $@.temp;
+	sed 's,\($*\)\.o[ :]*,\1.o $@ : ,g' < $@.temp > $@;
+
+（八）
+现在来看上面2行的执行流程：
+
+第一次make，假定这时从来没有make过，所有.d文件不存在，这时键入make：
+1-include所有.d文件的命令无效果。
+2-首次编译所有.c文件。每个.c文件中若#include了其它头文件，会由编译器自动读取。由于这次是完整编译，不存在什么依赖文件改了不会重编的问题。
+3-对每个.c文件，会根据依赖规则%.d: %.c，生成其对应的.d文件，例如main.c生成的main.d文件为：
+	main.o main.d: main.c command.h
+
+第二次make，假定改了command.h、在command.h中加入#include "pub.h"，这时再make：
+1-include所有.d文件，例如include了main.d后，得到依赖规则：
+	main.o main.d: main.c command.h
+注意所有include命令是首先执行的，make会先把所有include进来，再生成依赖规则关系。
+2-此时，根据依赖规则，由于command.h的文件戳改了，要重新生成main.o和main.d文件。
+3-先调用gcc -c main.c -o main.o生成main.o，
+再调用gcc -MM main.c > main.d重新生成main.d。
+此时main.d的依赖文件里增加了pub.h：
+	main.o main.d: main.c command.h pub.h
+4-对其它依赖文件没改的.c（由其.d文件得到），不会重新编译.o和生成其.d。
+5-最后会执行gcc $(objects) -o main生成最终可执行文件。
+
+第三次make，假定改了pub.h，再make。由于第二遍中，已把pub.h加入了main.d的依赖，此时会重编main.c，重新生成main.o和main.d。
+这样便实现了当前目录下任一源文件改了，自动编译涉及它的.c。
+
+（九）
+进一步修改，得到目前大家普遍使用的版本：
+	set -e; rm -f $@; \
+	$(CC) -MM $(CPPFLAGS) $< > $@.$$$$; \
+	sed 's,\($*\)\.o[ :]*,\1.o $@ : ,g' < $@.$$$$ > $@; \
+	rm -f $@.$$$$
+第一行，set -e表示，如果某个命令的返回参数非0，那么整个程序立刻退出。
+rm -f用来删除上一次make时生成的.d文件，因为现在要重新生成这个.d，老的可以删除了(不删也可以)。
+第二行：前面临时文件是用固定的.d.temp作为后缀，为了防止重名覆盖掉有用的文件，这里把temp换成一个随机数，该数可用$$得到，$$的值是当前进程号。
+由于$是makefile特殊符号，一个$要用$$来转义，所以2个$要写成$$$$（你可以在makefile里用echo $$$$来显示进程号的值）。
+第三行：sed命令的输入也改成该临时文件.$$。
+每个shell命令的进程号通常是不同的，为了每次调用$$时得到的进程号相同，必须把这4行放在一条命令中，这里用分号把它们连接成一条命令（在书写时为了易读，用\拆成了多行），这样每次.$$便是同一个文件了。
+你可以在makefile里用下面命令来比较：
+	echo $$$$
+	echo $$$$; echo $$$$
+第四行：当make完后，每个临时文件.d.$$，已经不需要了，删除之。
+但每个.d文件要在下一次make时被include进来，要保留。
+
+（十）
+综合前面的分析，得到我们的makefile文件：
+
+#使用$(wildcard *.c)来获取工作目录下的所有.c文件的列表
+sources:=$(wildcard *.c)
+objects:=$(sources:.c=.o)
+#这里,dependence是所有.d文件的列表.即把串sources串里的.c换成.d
+dependence:=$(sources:.c=.d)
+
+#所用的编译工具
+CC=gcc
+
+#当$(objects)列表里所有文件都生成后，便可调用这里的 $(CC) $^ -o $@ 命令生成最终目标all了
+#把all定义成第1个规则，使得可以把make all命令简写成make
+all: $(objects)
+	$(CC) $^ -o $@
+
+#这段是make的模式规则，指示如何由.c文件生成.o，即对每个.c文件，调用gcc -c XX.c -o XX.o命令生成对应的.o文件。
+#如果不写这段也可以，因为make的隐含规则可以起到同样的效果
+%.o: %.c
+	$(CC) -c $< -o $@
+
+include $(dependence)	#注意该句要放在终极目标all的规则之后，否则.d文件里的规则会被误当作终极规则了
+%.d: %.c
+	set -e; rm -f $@; \
+	$(CC) -MM $(CPPFLAGS) $< > $@.$$$$; \
+	sed 's,\($*\)\.o[ :]*,\1.o $@ : ,g' < $@.$$$$ > $@; \
+	rm -f $@.$$$$
+
+.PHONY: clean	#之所以把clean定义成伪目标，是因为这个目标并不对应实际的文件
+clean:
+	rm -f all $(objects) $(dependence)	#清除所有临时文件：所有.o和.d。.$$已在每次使用后立即删除。-f参数表示被删文件不存在时不报错
+
+（十一）
+上面这个makefile已经能正常工作了（编译C程序），但如果要用它编译C++，变量CC值要改成g++，每个.c都要改成.cpp，有点繁琐。
+现在我们继续完善它，使其同时支持C和C++，并支持二者的混合编译。
+
+#一个实用的makefile，能自动编译当前目录下所有.c/.cpp源文件，支持二者混合编译
+#并且当某个.c/.cpp、.h或依赖的源文件被修改后，仅重编涉及到的源文件，未涉及的不编译
+#详解文档：http://blog.csdn.net/huyansoft/article/details/8924624
+#author：胡彦 2013-5-21
+
+#----------------------------------------------------------
+#编译工具用g++，以同时支持C和C++程序，以及二者的混合编译
+CC=g++
+
+#使用$(winldcard *.c)来获取工作目录下的所有.c文件的列表
+#sources:=main.cpp command.c
+
+#变量sources得到当前目录下待编译的.c/.cpp文件的列表，两次调用winldcard、结果连在一起即可
+sources:=$(wildcard *.c) $(wildcard *.cpp)
+
+#变量objects得到待生成的.o文件的列表，把sources中每个文件的扩展名换成.o即可。这里两次调用patsubst函数，第1次把sources中所有.cpp换成.o，第2次把第1次结果里所有.c换成.o
+objects:=$(patsubst %.c,%.o,$(patsubst %.cpp,%.o,$(sources)))
+
+#变量dependence得到待生成的.d文件的列表，把objects中每个扩展名.o换成.d即可。也可写成$(patsubst %.o,%.d,$(objects))
+dependence:=$(objects:.o=.d)
+
+#----------------------------------------------------------
+#当$(objects)列表里所有文件都生成后，便可调用这里的 $(CC) $^ -o $@ 命令生成最终目标all了
+#把all定义成第1个规则，使得可以把make all命令简写成make
+all: $(objects)
+	$(CC) $(CPPFLAGS) $^ -o $@
+	@./$@	#编译后立即执行
+
+#这段使用make的模式规则，指示如何由.c文件生成.o，即对每个.c文件，调用gcc -c XX.c -o XX.o命令生成对应的.o文件
+#如果不写这段也可以，因为make的隐含规则可以起到同样的效果
+%.o: %.c
+	$(CC) $(CPPFLAGS) -c $< -o $@
+
+#同上，指示如何由.cpp生成.o，可省略
+%.o: %.cpp
+	$(CC) $(CPPFLAGS) -c $< -o $@
+
+#----------------------------------------------------------
+include $(dependence)	#注意该句要放在终极目标all的规则之后，否则.d文件里的规则会被误当作终极规则了
+
+#因为这4行命令要多次凋用，定义成命令包以简化书写
+define gen_dep
+set -e; rm -f $@; \
+$(CC) -MM $(CPPFLAGS) $< > $@.$$$$; \
+sed 's,\($*\)\.o[ :]*,\1.o $@ : ,g' < $@.$$$$ > $@; \
+rm -f $@.$$$$
+endef
+
+#指示如何由.c生成其依赖规则文件.d
+#这段使用make的模式规则，指示对每个.c文件，如何生成其依赖规则文件.d，调用上面的命令包即可
+%.d: %.c
+	$(gen_dep)
+
+#同上，指示对每个.cpp，如何生成其依赖规则文件.d
+%.d: %.cpp
+	$(gen_dep)
+
+#----------------------------------------------------------
+#清除所有临时文件（所有.o和.d）。之所以把clean定义成伪目标，是因为这个目标并不对应实际的文件
+.PHONY: clean
+clean:	#.$$已在每次使用后立即删除。-f参数表示被删文件不存在时不报错
+	rm -f all $(objects) $(dependence)
+
+echo:	#调试时显示一些变量的值
+	@echo sources=$(sources)
+	@echo objects=$(objects)
+	@echo dependence=$(dependence)
+	@echo CPPFLAGS=$(CPPFLAGS)
+
+#提醒：当混合编译.c/.cpp时，为了能够在C++程序里调用C函数，必须把每一个要调用的C函数，其声明都包括在extern "C"{}块里面，这样C++链接时才能成功链接它们。
+
+五
+makefile学习体会：
+刚学过C语言的读者，可能会觉得makefile有点难，因为makefile不像C语言那样，一招一式都那么清晰明了。
+在makefile里到处是“潜规则”，都是一些隐晦的东西，要弄明白只有搞清楚这些“潜规则”。
+基本的规则无非是“一个依赖改了，去更新哪些目标”。
+正因为隐晦动作较多，写成一个makefile才不需要那么多篇幅，毕竟项目代码才是主体。只要知道makefile的框架，往它的套路里填就行了。
+
+较好的学习资料是《跟我一起写Makefile.pdf》这篇文档（下载包里已经附带了），比较详细，适合初学者。
+我们学习的目的是，能够编写一个像本文这样的makefile，以满足简单项目的基本需求，这要求理解前面makefile几个关键点：
+1-多目标
+2-隐含规则
+3-定义模式规则
+4-自动生成依赖性
+可惜的是，这篇文档虽然比较全面，却没有以一个完整的例子为引导，对几处要点没有突出指明，尤其是“定义模式规则”在最后不显眼的位置（第十一部分第五点），导致看了“自动生成依赖性”一节后还比较模糊。
+所以，看了《跟我一起写Makefile.pdf》后，再结合本文针对性的讲解，会有更实际的收获。
+另一个学习资料是《GNU make v3.80中文手册v1.5.pdf》，这个手册更详细，但较枯燥，不适合完整学习，通常是遇到问题再去查阅。
+
+其它文章和代码请留意我的blog: http://blog.csdn.net/huyansoft
+
+[END]

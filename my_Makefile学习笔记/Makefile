@@ -1,4 +1,4 @@
-obj-m := zsl_cache.o
+obj-m := my_makefile_test.o
 KDIR := /lib/modules/$(shell uname -r)/build
 PWD := $(shell pwd)
 
