@@ -17,6 +17,16 @@ int main(void)
 	
 	int my_local;
 	printf("The stack top is near %p.\n", &my_local);
+	int my_local2;
+	if(&my_local < &my_local2)
+		printf("The stack is growing up...\n");
+	else if(&my_local > &my_local2)
+		printf("The stack is growing down...\n");
+	else
+	{
+		printf("Error in stack!\n");
+		return -1;
+	}
 	return 0;
 }
 
