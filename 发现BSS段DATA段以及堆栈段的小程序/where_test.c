@@ -14,10 +14,11 @@ static char my_static;
 int main(void)
 {
 	printf("The .bss segment is near %p.\n", &my_global);
+	printf("Test again: the .bss segment is near %p.\n", &my_static);
 	
 	my_static = 'c';
-	printf("The .data segment is near %p.\n", &my_static);
-	
+	printf("The .data segment is near %p, while the .bss segment is still near %p.\n", &my_static, &my_global);
+
 	char * my_stack = (char *)alloca(1);
 	char * my_heap = (char *)malloc(1);
 	printf("The stack top is near %p.\n", my_stack);
