@@ -11,7 +11,7 @@
 
 	∵FSM的功能就是：已知目前状态s和输入条件c => 下一跳状态和触发函数
 	∴自定义一个数据结构（就叫做NEXT_STEP）把下一跳状态和触发函数绑定在一起.
-	∴最重要的一个数据结构就是跳转表Jump_table[state][conditio]{NEXT_STEP};
+	∴最重要的一个数据结构就是跳转表Jump_table[state][condition]{NEXT_STEP};
 					
 							
 				   
